@@ -1,0 +1,41 @@
+﻿{
+  "Commands": [
+    {
+      "TextCommand": "WITH",
+      "TextSay":  "WITH has been typed {0} times",
+      "StoredVariable": "count:WITH"
+    },
+    {
+      "TextCommand": "POG",
+      "TextSay": "Pog has been typed {0} times",
+      "StoredVariable": "count:POG"
+    },
+    {
+      "TextCommand": "PepeSmoke",
+      "TextSay": "pepeSmoke has been typed {0} times",
+      "StoredVariable": "count:PEPESMOKE"
+    }
+  ],
+  "Counters": [
+    {
+      "ThreadName": "Pog",
+      "TextRegex": "\\b(Pog)\\b",
+      "StoredVariable": "count:POG"
+    },
+    {
+      "ThreadName": "F",
+      "TextRegex": "\\b(F)\\b",
+      "StoredVariable": "count:F"
+    },
+    {
+      "ThreadName": "WITH",
+      "TextRegex": "\\b(WITH)\\b",
+      "StoredVariable": "count:WITH"
+    },
+    {
+      "ThreadName": "PepeSmoke",
+      "TextRegex": "\\b(pepeSmoke)\\b",
+      "StoredVariable": "count:PEPESMOKE"
+    }
+  ]
+}
