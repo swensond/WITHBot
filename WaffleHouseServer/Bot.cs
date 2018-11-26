@@ -71,11 +71,6 @@ namespace WITHBot
         private ThreadManager _twitchManager = new ThreadManager();
         private Timer _twitchAutoscaling;
 
-        private void SetupConfigurationWatcher()
-        {
-
-        }
-
         public void LoadCommands()
         {
             _twitchCommands.Clear();
@@ -158,7 +153,6 @@ namespace WITHBot
         {
             Console.WriteLine("Connecting to Twitch");
             LoadCommands();
-            SetupConfigurationWatcher();
             SetupAutoScaler();
             twitch = new TwitchClient();
             ConnectionCredentials credentials = new ConnectionCredentials(twitchUsername: _twitchUsername, twitchOAuth: _twitchToken);
