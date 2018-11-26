@@ -16,7 +16,7 @@ namespace WITHBot
         private readonly string name;
         private readonly IModel channel;
         private readonly IConnection connection;
-        private readonly Dictionary<string, string> counters = new Dictionary<string, string>();
+        private readonly Dictionary<string, Counter> counters = new Dictionary<string, Counter>();
         private readonly IDatabase db;
 
         public Consumer(string queue, string name)
@@ -34,18 +34,29 @@ namespace WITHBot
             string jsonText = File.ReadAllText(path);
             Config config = JsonConvert.DeserializeObject<Config>(jsonText);
             // Load counters into dictionary
-            config.Counters.ForEach((Counter obj) =>
-            {
-                counters.Add(obj.TextRegex, obj.StoredVariable);
-            });
+            config.Counters.ForEach((Counter obj) => counters.Add(obj.TextRegex, obj));
             // Setup Database
             ConnectionMultiplexer redis = ConnectionMultiplexer.Connect("localhost");
             db = redis.GetDatabase();
+            if (db.IsConnected(""))
+            {
+                foreach (RedisValue value in db.ListRange("counters", 0, -1))
+                {
+                    RedisValue regex = db.HashGet((string)value, "regex");
+                    RedisValue variable = db.HashGet((string)value, "variable");
+
+                    counters.Add((string)regex, new Counter
+                    {
+                        TextRegex = (string)regex,
+                        StoredVariable = (string)variable
+                    });
+                }
+            }
             // Setup Consumer
             EventingBasicConsumer consumer = new EventingBasicConsumer(channel);
             consumer.Received += Received;
             channel.BasicConsume(queue: queue, autoAck: false, consumer: consumer);
-            Console.WriteLine($"{name} is online");
+            Console.WriteLine($"{name} is online with {counters.Count} counters");
         }
 
         private void Received(object model, BasicDeliverEventArgs ea)
@@ -55,11 +66,11 @@ namespace WITHBot
             // Setup Redis batch operation
             IBatch batch = db.CreateBatch();
             // Cycle through counters; testing and adding into the DB
-            foreach (KeyValuePair<string, string> counter in counters)
+            foreach (KeyValuePair<string, Counter> counter in counters)
             {
                 Match match = Regex.Match(message, @counter.Key, RegexOptions.Multiline);
                 if (match.Success)
-                    batch.StringIncrementAsync(counter.Value, Regex.Matches(message, @counter.Key).Count);
+                    batch.StringIncrementAsync(counter.Value.StoredVariable, Regex.Matches(message, @counter.Key).Count);
             }
             // Execute batch job
             batch.Execute();

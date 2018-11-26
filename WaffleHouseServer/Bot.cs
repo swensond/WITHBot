@@ -1,131 +1,241 @@
-﻿// using System;
-// using System.Collections;
-// using System.Collections.Generic;
-// using System.Text.RegularExpressions;
-// using StackExchange.Redis;
-// using TwitchLib.Client;
-// using TwitchLib.Client.Events;
-// using TwitchLib.Client.Models;
+﻿using System;
+using System.Collections;
+using System.IO;
+using System.Text;
+using System.Threading;
+using Newtonsoft.Json;
+using RabbitMQ.Client;
+using StackExchange.Redis;
+using TwitchLib.Client;
+using TwitchLib.Client.Events;
+using TwitchLib.Client.Models;
 
-// namespace WaffleHouseServer
-// {
+namespace WITHBot
+{
+    public class Bot
+    {
+        #region Redis
 
-//     public class Bot
-//     {
-//         private readonly TwitchClient client = new TwitchClient();
-//         private ConnectionMultiplexer redis;
+        private IDatabase redis;
+        private ConnectionMultiplexer _redisConnection;
+        private readonly string _redisQueue = "counters";
 
-//         public IDatabase db;
+        private void ConnectRedis()
+        {
+            Console.WriteLine("Connecting to Redis");
+            _redisConnection = ConnectionMultiplexer.Connect(configuration: "localhost");
+            redis = _redisConnection.GetDatabase();
+        }
 
-//         public void SetupDB()
-//         {
-//             redis = ConnectionMultiplexer.Connect("localhost");
-//             db = redis.GetDatabase();
-//         }
+        private void DisconnectRedis()
+        {
+            Console.WriteLine("Disconnecting from Redis");
+            _redisConnection.Close();
+        }
 
-//         public void SetupTwitch()
-//         {
-//             string username = Environment.GetEnvironmentVariable("TWITCH_USERNAME");
-//             string token = Environment.GetEnvironmentVariable("TWITCH_TOKEN");
-//             string channel = Environment.GetEnvironmentVariable("TWITCH_CHANNEL");
-//             ConnectionCredentials credentials = new ConnectionCredentials(username, token);
-//             client.Initialize(credentials, channel);
-//             client.AddChatCommandIdentifier('!');
-//         }
+        #endregion
 
-//         public void SetupCounter(Counter data)
-//         {
-//             client.OnMessageReceived += delegate (object sender, OnMessageReceivedArgs e) {
-//                 if (e.ChatMessage.Username.Equals(Environment.GetEnvironmentVariable("TWITCH_USERNAME")))
-//                     return;
+        #region RabbitMQ
 
-//                 Match match = Regex.Match(e.ChatMessage.Message, @data.TextRegex, RegexOptions.Multiline);
-//                 if (match.Success)
-//                     this.db.StringIncrement(data.StoredVariable, Regex.Matches(e.ChatMessage.Message, @data.TextRegex).Count);
-//             };
-//         }
+        private IModel rabbit;
+        private IConnection _rabbitConnection;
+        private IBasicProperties _rabbitProperties;
 
-//         public void SetupCommands(Hashtable commands)
-//         {
-//             RedisValue[] DBCommands = this.db.ListRange("commands", 0, -1);
-//             foreach (string dbcommand in DBCommands.ToStringArray())
-//             {
-//                 if (commands.ContainsKey(dbcommand.ToLower()))
-//                     continue;
+        private void ConnectRabbit()
+        {
+            Console.WriteLine("Connecting to RabbitMQ");
+            IConnectionFactory rabbitFactory = new ConnectionFactory() { HostName = "localhost" };
+            _rabbitConnection = rabbitFactory.CreateConnection();
+            rabbit = _rabbitConnection.CreateModel();
+            rabbit.QueueDeclare(queue: _redisQueue, durable: true, exclusive: false, autoDelete: false, arguments: null);
+            _rabbitProperties = rabbit.CreateBasicProperties();
+            _rabbitProperties.Persistent = true;
+        }
 
-//                 commands.Add(dbcommand.ToLower(), new Command
-//                 {
-//                     TextCommand = dbcommand,
-//                     TextSay = this.db.HashGet(dbcommand, "message"),
-//                     StoredVariable = this.db.HashGet(dbcommand, "variable")
-//                 });
-//             }
+        private void DisconnectRabbit()
+        {
+            Console.WriteLine("Disconnecting from RabbitMQ");
+            rabbit.Close();
+            _rabbitConnection.Close();
+        }
 
-//             client.OnChatCommandReceived += delegate (object sender, OnChatCommandReceivedArgs e)
-//             {
-//                 if (commands.ContainsKey(e.Command.CommandText.ToLower()))
-//                 {
-//                     Command data = commands[e.Command.CommandText.ToLower()] as Command;
-//                     string key = $"command:timer:{data.TextCommand}";
-//                     if (!this.db.KeyExists(key))
-//                     {
-//                         string message = !data.StoredVariable.Equals("") ? $"@{e.Command.ChatMessage.Username} {String.Format(data.TextSay, db.StringGet(data.StoredVariable))}" : $"{data.TextSay}";
-//                         client.SendMessage(e.Command.ChatMessage.Channel, message);
+        #endregion
 
-//                         this.db.StringSet(key, "");
-//                         this.db.KeyExpire(key, DateTime.Now.AddSeconds(15));
-//                     }
-//                 }
+        #region Twitch
 
-//                 if (!e.Command.ChatMessage.IsModerator || !e.Command.ChatMessage.IsBroadcaster)
-//                     return;
+        private TwitchClient twitch;
+        private readonly string _twitchUsername = Environment.GetEnvironmentVariable("TWITCH_USERNAME");
+        private readonly string _twitchToken = Environment.GetEnvironmentVariable("TWITCH_TOKEN");
+        private readonly string _twitchChannel = Environment.GetEnvironmentVariable("TWITCH_CHANNEL");
+        private Hashtable _twitchCommands = new Hashtable();
+        private ThreadManager _twitchManager = new ThreadManager();
+        private Timer _twitchAutoscaling;
 
-//                 if(e.Command.CommandText.Equals("AddCommand"))
-//                 {
-//                     Match match = Regex.Match(e.Command.ChatMessage.Message, @"command:(?<command>[^\s]+)|message:""(?<message>.*?)""|variable:(?<variable>[^\s]+)");
-//                     string command = match.Groups["command"].Value;
-//                     string message = match.Groups["message"].Value;
-//                     string variable = match.Groups["variable"].Value;
-//                     this.db.ListRightPush("commands", command);
-//                     this.db.HashSet(command, "message", message);
-//                     this.db.HashSet(command, "variable", variable);
-//                     client.SendMessage(e.Command.ChatMessage.Channel, $"{command} has been created.");
-//                     Watcher.RestartCommandThread();
-//                     return;
-//                 }
+        private void SetupConfigurationWatcher()
+        {
 
-//                 if(e.Command.CommandText.Equals("AddCounter"))
-//                 {
-//                     Match counterMatch = Regex.Match(e.Command.ChatMessage.Message, @"text:""(?<text>.*?)""|variable:(?<variable>[^\s]+)");
-//                     string text = counterMatch.Groups["text"].Value;
-//                     this.db.HashSet("counters", text, $"count:{text}");
-//                     Watcher.Spawn(new ThreadSetup
-//                     {
-//                         name = $"counter:count:{text}",
-//                         arguments = null,
-//                         method = () =>
-//                         {
-//                             Bot bot = new Bot();
-//                             bot.SetupDB();
-//                             bot.SetupTwitch();
-//                             bot.SetupCounter(new Counter
-//                             {
-//                                 TextRegex = $"\\b({text})\\b",
-//                                 StoredVariable = $"count:{text}"
-//                             });
-//                             bot.Connect();
-//                             Watcher.ThreadExit.WaitOne();
-//                         }
-//                     });
-//                     client.SendMessage(e.Command.ChatMessage.Channel, $"Counter has been created.");
-//                     return;
-//                 }
-//             };
-//         }
+        }
 
-//         public void Connect()
-//         {
-//             client.Connect();
-//         }
-//     }
-// }
+        public void LoadCommands()
+        {
+            _twitchCommands.Clear();
+
+            if (redis.IsConnected(""))
+            {
+                foreach (RedisValue value in redis.ListRange("commands", 0, -1))
+                {
+                    RedisValue command = redis.HashGet((string)value, "command");
+                    RedisValue message = redis.HashGet((string)value, "message");
+                    RedisValue variable = redis.HashGet((string)value, "variable");
+
+                    _twitchCommands.Add((string)command, new Command
+                    {
+                        TextCommand = (string)command,
+                        TextSay = (string)message,
+                        StoredVariable = (string)variable
+                    });
+                }
+            }
+
+            string path = Path.Join(Directory.GetCurrentDirectory(), "config.json");
+            string jsonText = File.ReadAllText(path);
+            Config config = JsonConvert.DeserializeObject<Config>(jsonText);
+            config.Commands.ForEach((Command obj) => _twitchCommands.Add(obj.TextCommand, obj));
+
+            Console.WriteLine($"Loaded {_twitchCommands.Count} commands");
+        }
+
+        public void LoadCounters()
+        {
+            _twitchManager.ReSpawn();
+        }
+
+        private void SetupAutoScaler()
+        {
+            Console.WriteLine("Spinning up first counter");
+            _twitchManager.ManagedSpawn(new ParameterizedThreadDefinition
+            {
+                name = $"counter:0",
+                callback = (object blocker) =>
+                {
+                    Consumer consumer = new Consumer(queue: _redisQueue, name: $"counter:0");
+                    (blocker as ManualResetEvent).WaitOne();
+                    consumer.Shutdown();
+                }
+            });
+
+            _twitchAutoscaling = new Timer(
+                callback: delegate
+                {
+                    double messageCount = rabbit.MessageCount(_redisQueue) / (double)_twitchManager.Count;
+
+                    if (messageCount > 5)
+                    {
+                        int newNumber = _twitchManager.Count;
+                        _twitchManager.ManagedSpawn(new ParameterizedThreadDefinition
+                        {
+                            name = $"counter:{newNumber}",
+                            callback = (object blocker) =>
+                            {
+                                Consumer consumer = new Consumer(queue: _redisQueue, name: $"counter:{newNumber}");
+                                (blocker as ManualResetEvent).WaitOne();
+                                consumer.Shutdown();
+                            }
+                        });
+                    }
+                    else if (_twitchManager.Count > 1 && messageCount <= 1)
+                    {
+                        _twitchManager.DeSpawn();
+                    }
+                },
+                state: null,
+                dueTime: 2500,
+                period: 2500
+            );
+        }
+
+        private void ConnectTwitch()
+        {
+            Console.WriteLine("Connecting to Twitch");
+            LoadCommands();
+            SetupConfigurationWatcher();
+            SetupAutoScaler();
+            twitch = new TwitchClient();
+            ConnectionCredentials credentials = new ConnectionCredentials(twitchUsername: _twitchUsername, twitchOAuth: _twitchToken);
+            twitch.Initialize(credentials: credentials, channel: _twitchChannel);
+            twitch.OnMessageReceived += OnMessageReceived;
+            twitch.OnChatCommandReceived += OnChatCommandReceived;
+            twitch.Connect();
+        }
+
+        private void OnMessageReceived(object sender, OnMessageReceivedArgs e)
+        {
+            if (e.ChatMessage.Username.Equals(obj: _twitchUsername))
+                return;
+
+            rabbit.BasicPublish(
+                exchange: "",
+                routingKey: _redisQueue,
+                mandatory: false,
+                basicProperties: _rabbitProperties,
+                body: Encoding.UTF8.GetBytes(e.ChatMessage.Message)
+            );
+        }
+
+        private void OnChatCommandReceived(object sender, OnChatCommandReceivedArgs e)
+        {
+            if (!_twitchCommands.ContainsKey(e.Command.CommandText))
+                return;
+
+            Command command = _twitchCommands[e.Command.CommandText] as Command;
+
+            if (redis.KeyExists(command.TextCommand))
+                return;
+
+            string message = command.TextSay;
+
+            if (command.StoredVariable.Length != 0)
+            {
+                RedisValue data = redis.StringGet(command.StoredVariable);
+                message = String.Format(message, String.Format("{0:N0}", Int32.Parse(data)));
+            }
+
+            twitch.SendMessage(channel: e.Command.ChatMessage.Channel, message: $"{e.Command.ChatMessage.DisplayName} {message}");
+            redis.StringSet(command.TextCommand, "");
+            redis.KeyExpire(command.TextCommand, DateTime.Now.AddSeconds(15));
+        }
+
+        private void DisconnectTwitch()
+        {
+            Console.WriteLine("Stopping AutoScalar");
+            _twitchAutoscaling.Change(Timeout.Infinite, Timeout.Infinite);
+            for (int i = 0; i <= _twitchManager.Count - 1; i++)
+            {
+                _twitchManager.DeSpawn();
+            }
+            Console.WriteLine("Disconnecting from Twitch");
+            twitch.Disconnect();
+        }
+
+        #endregion
+
+        public void Connect()
+        {
+            ConnectRedis();
+            ConnectRabbit();
+            ConnectTwitch();
+
+            Console.WriteLine("Connections established");
+        }
+
+        public void Disconnect()
+        {
+            DisconnectTwitch();
+            DisconnectRabbit();
+            DisconnectRedis();
+
+            Console.WriteLine("Connections terminated");
+        }
+
+    }
+}

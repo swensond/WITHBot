@@ -10,73 +10,85 @@ namespace WITHBot
     {
         private readonly OrderedDictionary threads = new OrderedDictionary();
         private readonly List<ThreadDefinition> usedDefinitions = new List<ThreadDefinition>();
+        private readonly List<ParameterizedThreadDefinition> usedParameterizedDefinitions = new List<ParameterizedThreadDefinition>();
 
         public int Count { get { return threads.Count; } }
 
         public void Spawn(ThreadDefinition definition)
         {
-            // Setup a new lock for the thread
-            ManualResetEvent newLock = new ManualResetEvent(false);
-            // Create the thread
-            Thread thread = new Thread(definition.method);
-            // Pass the lock into the thread and start
-            thread.Start(newLock);
-            // preserve the thread, lock, and definition
+            Thread thread = new Thread(definition.callback);
+            thread.Start();
             usedDefinitions.Add(definition);
+            threads.Add(definition.name, new Tuple<Thread, ManualResetEvent>(thread, null));
+        }
+
+        public void ManagedSpawn(ParameterizedThreadDefinition definition)
+        {
+            ManualResetEvent newLock = new ManualResetEvent(false);
+            Thread thread = new Thread(definition.callback);
+            thread.Start(newLock);
+            usedParameterizedDefinitions.Add(definition);
             threads.Add(definition.name, new Tuple<Thread, ManualResetEvent>(thread, newLock));
         }
 
         public void ReSpawn()
         {
-            // Setup a clone variable
             DictionaryEntry[] clone = new DictionaryEntry[threads.Count];
-            // Clone threads into the clone
             threads.CopyTo(clone, 0);
-            // Cycle through the clone
             foreach (DictionaryEntry entry in clone)
             {
-                // Break the lock for the thread
-                (entry.Value as Tuple<Thread, ManualResetEvent>).Item2.Set();
-                // Grab the definition for the thread
-                ThreadDefinition usedDefinition = usedDefinitions.Find((ThreadDefinition definition) => definition.name.Equals(entry.Key));
-                // Remove the definition, thread, and lock
-                usedDefinitions.Remove(usedDefinition);
-                threads.Remove(entry.Key);
-                // Respawn the thread
-                Spawn(usedDefinition);
+                (entry.Value as Tuple<Thread, ManualResetEvent>).Item2?.Set();
+
+                ThreadDefinition threadDefinition = usedDefinitions.Find((ThreadDefinition obj) => obj.name.Equals(entry.Key));
+                if (threadDefinition != null)
+                {
+                    usedDefinitions.Remove(threadDefinition);
+                    threads.Remove(entry.Key);
+                    Spawn(threadDefinition);
+                }
+
+                ParameterizedThreadDefinition parameterizedThreadDefinition = usedParameterizedDefinitions.Find((ParameterizedThreadDefinition obj) => obj.name.Equals(entry.Key));
+                if (parameterizedThreadDefinition != null)
+                {
+                    usedParameterizedDefinitions.Remove(parameterizedThreadDefinition);
+                    threads.Remove(entry.Key);
+                    ManagedSpawn(parameterizedThreadDefinition);
+                }
             }
         }
 
         public void DeSpawn()
         {
-            // Grab the last thread
             Tuple<Thread, ManualResetEvent> thread = (Tuple<Thread, ManualResetEvent>)threads[threads.Count - 1];
-            // Break the lock for the thread
-            thread.Item2.Set();
-            // Remove the definition, thread, and lock
-            threads.RemoveAt(threads.Count - 1);
-            usedDefinitions.RemoveAt(usedDefinitions.Count - 1);
+            thread.Item2?.Set();
+
+            ThreadDefinition threadDefinition = usedDefinitions.Find((ThreadDefinition obj) => obj.name.Equals(thread.Item1.Name));
+            if (threadDefinition != null)
+            {
+                usedDefinitions.Remove(threadDefinition);
+                threads.Remove(thread.Item1.Name);
+            }
+
+            ParameterizedThreadDefinition parameterizedThreadDefinition = usedParameterizedDefinitions.Find((ParameterizedThreadDefinition obj) => obj.name.Equals(thread.Item1.Name));
+            if (parameterizedThreadDefinition != null)
+            {
+                usedParameterizedDefinitions.Remove(parameterizedThreadDefinition);
+                threads.Remove(thread.Item1.Name);
+            }
         }
 
         public void SanityCheck()
         {
-            // Setup a clone variable
             DictionaryEntry[] clone = new DictionaryEntry[threads.Count];
-            // Clone threads into the clone
             threads.CopyTo(clone, 0);
-            // Cycle through the clone
             foreach (DictionaryEntry entry in clone)
             {
-                // Check if the Thread is alive
                 if ((entry.Value as Tuple<Thread, ManualResetEvent>).Item1.IsAlive)
                     continue;
 
-                // If the thread is dead, we want to grab the definition used for Spawn
                 ThreadDefinition usedDefinition = usedDefinitions.Find((ThreadDefinition definition) => definition.name.Equals(entry.Key));
-                // Remove the definition, thread, and lock
                 usedDefinitions.Remove(usedDefinition);
                 threads.Remove(entry.Key);
-                // Spawn the thread using the same definition
                 Spawn(usedDefinition);
             }
         }

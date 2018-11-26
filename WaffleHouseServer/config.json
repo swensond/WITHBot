@@ -14,9 +14,19 @@
       "TextCommand": "PepeSmoke",
       "TextSay": "pepeSmoke has been typed {0} times",
       "StoredVariable": "count:PEPESMOKE"
+    },
+    {
+      "TextCommand": "KAPPA",
+      "TextSay": "Kappa has been typed {0} times",
+      "StoredVariable": "count:KAPPA"
     }
   ],
   "Counters": [
+    {
+      "ThreadName": "Kappa",
+      "TextRegex": "\\b(Kappa)\\b",
+      "StoredVariable": "count:KAPPA"
+    },
     {
       "ThreadName": "Pog",
       "TextRegex": "\\b(Pog)\\b",

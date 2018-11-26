@@ -5,7 +5,6 @@ namespace WITHBot
     public class ThreadDefinition
     {
         public string name;
-        public object arguments;
-        public ParameterizedThreadStart method;
+        public ThreadStart callback;
     }
 }
