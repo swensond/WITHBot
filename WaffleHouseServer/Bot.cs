@@ -79,15 +79,15 @@ namespace WITHBot
             {
                 foreach (RedisValue value in redis.ListRange("commands", 0, -1))
                 {
-                    RedisValue command = redis.HashGet((string)value, "command");
-                    RedisValue message = redis.HashGet((string)value, "message");
-                    RedisValue variable = redis.HashGet((string)value, "variable");
+                    RedisValue command = redis.HashGet(value.ToString(), "command");
+                    RedisValue message = redis.HashGet(value.ToString(), "message");
+                    RedisValue variable = redis.HashGet(value.ToString(), "variable");
 
-                    _twitchCommands.Add((string)command, new Command
+                    _twitchCommands.Add(command.ToString().ToLower(), new Command
                     {
-                        TextCommand = (string)command,
-                        TextSay = (string)message,
-                        StoredVariable = (string)variable
+                        TextCommand = command.ToString(),
+                        TextSay = message.ToString(),
+                        StoredVariable = variable.ToString()
                     });
                 }
             }
@@ -95,7 +95,7 @@ namespace WITHBot
             string path = Path.Join(Directory.GetCurrentDirectory(), "config.json");
             string jsonText = File.ReadAllText(path);
             Config config = JsonConvert.DeserializeObject<Config>(jsonText);
-            config.Commands.ForEach((Command obj) => _twitchCommands.Add(obj.TextCommand, obj));
+            config.Commands.ForEach((Command obj) => _twitchCommands.Add(obj.TextCommand.ToLower(), obj));
 
             Console.WriteLine($"Loaded {_twitchCommands.Count} commands");
         }
@@ -123,6 +123,7 @@ namespace WITHBot
                 callback: delegate
                 {
                     double messageCount = rabbit.MessageCount(_redisQueue) / (double)_twitchManager.Count;
+                    Console.WriteLine($"There is {rabbit.MessageCount(_redisQueue)} messages in queue");
 
                     if (messageCount > 5)
                     {
@@ -149,6 +150,16 @@ namespace WITHBot
             );
         }
 
+        public void PauseAutoScaler()
+        {
+            _twitchAutoscaling.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        public void RestartAutoScaler()
+        {
+            _twitchAutoscaling.Change(2500, 2500);
+        }
+
         private void ConnectTwitch()
         {
             Console.WriteLine("Connecting to Twitch");
@@ -164,8 +175,8 @@ namespace WITHBot
 
         private void OnMessageReceived(object sender, OnMessageReceivedArgs e)
         {
-            if (e.ChatMessage.Username.Equals(obj: _twitchUsername))
-                return;
+            if (e.ChatMessage.Username.Equals("with_bot"))
+                Console.WriteLine(e.ChatMessage.Message);
 
             rabbit.BasicPublish(
                 exchange: "",
@@ -178,10 +189,10 @@ namespace WITHBot
 
         private void OnChatCommandReceived(object sender, OnChatCommandReceivedArgs e)
         {
-            if (!_twitchCommands.ContainsKey(e.Command.CommandText))
+            if (!_twitchCommands.ContainsKey(e.Command.CommandText.ToLower()))
                 return;
 
-            Command command = _twitchCommands[e.Command.CommandText] as Command;
+            Command command = _twitchCommands[e.Command.CommandText.ToLower()] as Command;
 
             if (redis.KeyExists(command.TextCommand))
                 return;
@@ -195,8 +206,15 @@ namespace WITHBot
             }
 
             twitch.SendMessage(channel: e.Command.ChatMessage.Channel, message: $"{e.Command.ChatMessage.DisplayName} {message}");
+            rabbit.BasicPublish(
+                exchange: "",
+                routingKey: _redisQueue,
+                mandatory: false,
+                basicProperties: _rabbitProperties,
+                body: Encoding.UTF8.GetBytes($"{e.Command.ChatMessage.DisplayName} {message}")
+            );
             redis.StringSet(command.TextCommand, "");
-            redis.KeyExpire(command.TextCommand, DateTime.Now.AddSeconds(15));
+            redis.KeyExpire(command.TextCommand, DateTime.Now.AddSeconds(5));
         }
 
         private void DisconnectTwitch()

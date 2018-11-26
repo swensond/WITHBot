@@ -52,8 +52,10 @@ namespace WITHBot
                 if (e.Name.Equals(".#config.json"))
                 {
                     Console.WriteLine("Configuration has changed reloading commands and counters");
+                    bot.PauseAutoScaler();
                     bot.LoadCommands();
                     bot.LoadCounters();
+                    bot.RestartAutoScaler();
                 }
             };
 

@@ -1,6 +1,26 @@
 ﻿{
   "Commands": [
     {
+      "TextCommand": "insight",
+      "TextSay": "Go to https://mars.nasa.gov/insight/ for all information on the Mars mission including link to the streams.",
+      "StoredVariable": ""
+    },
+    {
+      "TextCommand": "WITHOwner",
+      "TextSay": "My owner is @nexhunter he is dumb and things usually are broken",
+      "StoredVariable": ""
+    },
+    {
+      "TextCommand": "PEPODANCE",
+      "TextSay": "PepoDance has been typed {0} times",
+      "StoredVariable": "count:PEPODANCE"
+    },
+    {
+      "TextCommand": "02DANCE",
+      "TextSay": "02Dance has been typed {0} times",
+      "StoredVariable": "count:02DANCE"
+    },
+    {
       "TextCommand": "WITH",
       "TextSay":  "WITH has been typed {0} times",
       "StoredVariable": "count:WITH"
@@ -22,6 +42,16 @@
     }
   ],
   "Counters": [
+    {
+      "ThreadName": "PepoDance",
+      "TextRegex": "\\b(PepoeDance)\\b",
+      "StoredVariable": "count:PEPODANCE"
+    },
+    {
+      "ThreadName": "02Dance",
+      "TextRegex": "\\b(02Dance)\\b",
+      "StoredVariable": "count:02DANCE"
+    },
     {
       "ThreadName": "Kappa",
       "TextRegex": "\\b(Kappa)\\b",
