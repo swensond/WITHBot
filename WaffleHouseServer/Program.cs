@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Net;
 using Newtonsoft.Json;
 using StackExchange.Redis;
 using RabbitMQ.Client;
@@ -17,6 +18,35 @@ namespace WITHBot
     {
         static readonly ManualResetEvent _quitMain = new ManualResetEvent(false);
 
+        static void AddEmote(dynamic emote, IDatabase redis)
+        {
+            string emoteText = emote.emote;
+            string emoteNumber = emote.amount;
+
+            if (emoteText.Equals(""))
+                return;
+
+            HashEntry[] commandDef = new HashEntry[4];
+            commandDef[0] = new HashEntry("command", $"{emoteText.ToUpper()}");
+            commandDef[1] = new HashEntry("message", $"{emoteText} has been typed {{0}} times");
+            commandDef[2] = new HashEntry("variable", $"count:{emoteText.ToUpper()}");
+            string emoteTextRegex = "";
+
+            foreach (char c in emoteText)
+            {
+                if (!Char.IsLetterOrDigit(c))
+                    emoteTextRegex += $"\\{c}";
+                else
+                    emoteTextRegex += c;
+            }
+
+            commandDef[3] = new HashEntry("regex", $"(?>\\b|\\B)({emoteTextRegex})(?>\\b|\\B)");
+            redis.HashSet(emoteText, commandDef);
+            redis.StringSet($"count:{emoteText.ToUpper()}", emoteNumber);
+            redis.SetAdd("commands", emoteText);
+            redis.SetAdd("counters", emoteText);
+        }
+
         static void Main(string[] args)
         {
             Console.CancelKeyPress += (object sender, ConsoleCancelEventArgs eArgs) =>
@@ -25,7 +55,24 @@ namespace WITHBot
                 eArgs.Cancel = true;
             };
 
+            using (WebClient wc = new WebClient())
+            {
+                dynamic json = JsonConvert.DeserializeObject<dynamic>(wc.DownloadString("https://api.streamelements.com/kappa/v2/chatstats/giantwaffle/stats"));
+                ConnectionMultiplexer _redisConnection = ConnectionMultiplexer.Connect(configuration: "localhost");
+                IDatabase redis = _redisConnection.GetDatabase();
+                foreach (dynamic emote in json.bttvEmotes)
+                {
+                    AddEmote(emote, redis);
+                }
+
+                foreach (dynamic emote in json.ffzEmotes)
+                {
+                    AddEmote(emote, redis);
+                }
+            }
+
             ThreadManager manager = new ThreadManager();
+
 
             Bot bot = new Bot();
 

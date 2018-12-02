@@ -1,67 +1,12 @@
 ﻿{
   "Commands": [
     {
-      "TextCommand": "insight",
-      "TextSay": "Go to https://mars.nasa.gov/insight/ for all information on the Mars mission including link to the streams.",
-      "StoredVariable": ""
-    },
-    {
-      "TextCommand": "WITHOwner",
-      "TextSay": "My owner is @nexhunter he is dumb and things usually are broken",
-      "StoredVariable": ""
-    },
-    {
-      "TextCommand": "PEPODANCE",
-      "TextSay": "PepoDance has been typed {0} times",
-      "StoredVariable": "count:PEPODANCE"
-    },
-    {
-      "TextCommand": "02DANCE",
-      "TextSay": "02Dance has been typed {0} times",
-      "StoredVariable": "count:02DANCE"
-    },
-    {
       "TextCommand": "WITH",
       "TextSay":  "WITH has been typed {0} times",
       "StoredVariable": "count:WITH"
-    },
-    {
-      "TextCommand": "POG",
-      "TextSay": "Pog has been typed {0} times",
-      "StoredVariable": "count:POG"
-    },
-    {
-      "TextCommand": "PepeSmoke",
-      "TextSay": "pepeSmoke has been typed {0} times",
-      "StoredVariable": "count:PEPESMOKE"
-    },
-    {
-      "TextCommand": "KAPPA",
-      "TextSay": "Kappa has been typed {0} times",
-      "StoredVariable": "count:KAPPA"
     }
   ],
   "Counters": [
-    {
-      "ThreadName": "PepoDance",
-      "TextRegex": "\\b(PepoeDance)\\b",
-      "StoredVariable": "count:PEPODANCE"
-    },
-    {
-      "ThreadName": "02Dance",
-      "TextRegex": "\\b(02Dance)\\b",
-      "StoredVariable": "count:02DANCE"
-    },
-    {
-      "ThreadName": "Kappa",
-      "TextRegex": "\\b(Kappa)\\b",
-      "StoredVariable": "count:KAPPA"
-    },
-    {
-      "ThreadName": "Pog",
-      "TextRegex": "\\b(Pog)\\b",
-      "StoredVariable": "count:POG"
-    },
     {
       "ThreadName": "F",
       "TextRegex": "\\b(F)\\b",
@@ -71,11 +16,6 @@
       "ThreadName": "WITH",
       "TextRegex": "\\b(WITH)\\b",
       "StoredVariable": "count:WITH"
-    },
-    {
-      "ThreadName": "PepeSmoke",
-      "TextRegex": "\\b(pepeSmoke)\\b",
-      "StoredVariable": "count:PEPESMOKE"
     }
   ]
 }

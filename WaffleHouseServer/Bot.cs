@@ -77,7 +77,7 @@ namespace WITHBot
 
             if (redis.IsConnected(""))
             {
-                foreach (RedisValue value in redis.ListRange("commands", 0, -1))
+                foreach (RedisValue value in redis.SetMembers("commands"))
                 {
                     RedisValue command = redis.HashGet(value.ToString(), "command");
                     RedisValue message = redis.HashGet(value.ToString(), "message");
@@ -175,8 +175,12 @@ namespace WITHBot
 
         private void OnMessageReceived(object sender, OnMessageReceivedArgs e)
         {
-            if (e.ChatMessage.Username.Equals("with_bot"))
-                Console.WriteLine(e.ChatMessage.Message);
+            if (e.ChatMessage.Message.StartsWith('!'))
+            {
+                var chatCommand = new OnChatCommandReceivedArgs() { Command = new ChatCommand(e.ChatMessage) };
+                OnChatCommandReceived(sender, chatCommand);
+            }
+
 
             rabbit.BasicPublish(
                 exchange: "",
@@ -189,12 +193,17 @@ namespace WITHBot
 
         private void OnChatCommandReceived(object sender, OnChatCommandReceivedArgs e)
         {
+            if (redis.SetContains("commandMessages", e.Command.ChatMessage.Id))
+                return;
+
+            redis.SetAdd("commandMessages", e.Command.ChatMessage.Id);
+
             if (!_twitchCommands.ContainsKey(e.Command.CommandText.ToLower()))
                 return;
 
             Command command = _twitchCommands[e.Command.CommandText.ToLower()] as Command;
 
-            if (redis.KeyExists(command.TextCommand))
+            if (redis.KeyExists($"command:call:{command.TextCommand}"))
                 return;
 
             string message = command.TextSay;
@@ -206,6 +215,13 @@ namespace WITHBot
             }
 
             twitch.SendMessage(channel: e.Command.ChatMessage.Channel, message: $"{e.Command.ChatMessage.DisplayName} {message}");
+            //rabbit.BasicPublish(
+            //    exchange: "",
+            //    routingKey: _redisQueue,
+            //    mandatory: false,
+            //    basicProperties: _rabbitProperties,
+            //    body: Encoding.UTF8.GetBytes($"{e.Command.ChatMessage.Message.Substring(1)}")
+            //);
             rabbit.BasicPublish(
                 exchange: "",
                 routingKey: _redisQueue,
@@ -213,8 +229,8 @@ namespace WITHBot
                 basicProperties: _rabbitProperties,
                 body: Encoding.UTF8.GetBytes($"{e.Command.ChatMessage.DisplayName} {message}")
             );
-            redis.StringSet(command.TextCommand, "");
-            redis.KeyExpire(command.TextCommand, DateTime.Now.AddSeconds(5));
+            redis.StringSet($"command:call:{command.TextCommand}", "");
+            redis.KeyExpire($"command:call:{command.TextCommand}", DateTime.Now.AddSeconds(5));
         }
 
         private void DisconnectTwitch()

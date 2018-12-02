@@ -40,7 +40,7 @@ namespace WITHBot
             db = redis.GetDatabase();
             if (db.IsConnected(""))
             {
-                foreach (RedisValue value in db.ListRange("counters", 0, -1))
+                foreach (RedisValue value in db.SetMembers("counters"))
                 {
                     RedisValue regex = db.HashGet((string)value, "regex");
                     RedisValue variable = db.HashGet((string)value, "variable");
